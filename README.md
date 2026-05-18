@@ -333,9 +333,9 @@ curl http://127.0.0.1:8080/metrics | jq
 
 ## Contact / Maintainer
 
-**Maintainer**: <MAINTAINER_NAME>  
-**Email**: <MAINTAINER_EMAIL>  
-**GitHub**: <GITHUB_HANDLE>
+**Maintainer**: Akshat Chauhan  
+**Email**: akshatchauhan.dev@gmail.com  
+**GitHub**: AkZcH
 
 ## Resume Bullets
 
