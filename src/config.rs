@@ -1,7 +1,7 @@
+// src/config.rs
 use clap::Parser;
 use serde::Deserialize;
 
-/// Configuration loaded either from CLI or file
 #[derive(Debug, Parser, Clone)]
 #[command(name = "EchoTrap", about = "A self-rebuilding TCP honeypot")]
 pub struct CliConfig {
@@ -21,6 +21,10 @@ pub struct CliConfig {
     #[arg(long, default_value = "./echotrap.log")]
     pub log: String,
 
+    /// Port for the HTTP dashboard/metrics server
+    #[arg(long, default_value_t = 8081)]
+    pub dashboard_port: u16,
+
     /// Optional config file (TOML)
     #[arg(long)]
     pub config: Option<String>,
@@ -32,10 +36,10 @@ pub struct FileConfig {
     pub threshold: Option<u32>,
     pub window: Option<u64>,
     pub log: Option<String>,
+    pub dashboard_port: Option<u16>,
 }
 
 impl CliConfig {
-    /// Merge CLI + optional config file values
     pub fn merged(self) -> Self {
         if let Some(cfg_path) = &self.config {
             if let Ok(data) = std::fs::read_to_string(cfg_path) {
@@ -45,6 +49,7 @@ impl CliConfig {
                         threshold: file_cfg.threshold.unwrap_or(self.threshold),
                         window: file_cfg.window.unwrap_or(self.window),
                         log: file_cfg.log.unwrap_or(self.log),
+                        dashboard_port: file_cfg.dashboard_port.unwrap_or(self.dashboard_port),
                         config: self.config,
                     };
                 }

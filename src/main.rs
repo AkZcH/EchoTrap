@@ -11,6 +11,8 @@ mod util;
 use clap::Parser;
 use config::CliConfig;
 use logger::init_tracing;
+use metrics::Metrics;
+use tracing::info;
 
 #[tokio::main]
 async fn main() {
@@ -18,13 +20,23 @@ async fn main() {
 
     let cfg = CliConfig::parse().merged();
 
-    println!("2025-10-20T10:32:19.114652Z  INFO === EchoTrap Initialization Complete ===");
-    println!("2025-10-20T10:32:19.114652Z  INFO Port: {}", cfg.port);
-    println!("2025-10-20T10:32:19.114652Z  INFO Threshold: {}", cfg.threshold);
-    println!("2025-10-20T10:32:19.114652Z  INFO Window: {}s", cfg.window);
-    println!("2025-10-20T10:32:19.114652Z  INFO Log file: {}", cfg.log);
+    info!("=== EchoTrap Initialization Complete ===");
+    info!("Port:      {}", cfg.port);
+    info!("Threshold: {} hits", cfg.threshold);
+    info!("Window:    {}s", cfg.window);
+    info!("Log file:  {}", cfg.log);
+    info!("Dashboard: 0.0.0.0:{}", cfg.dashboard_port);
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    let metrics = Metrics::new();
 
-    network::start_listener(cfg).await;
+    // Spawn dashboard on its own task — runs concurrently with the TCP listener.
+    let dashboard_metrics = metrics.clone();
+    let dashboard_port = cfg.dashboard_port;
+    tokio::spawn(async move {
+        if let Err(e) = dashboard::start_dashboard(dashboard_metrics, dashboard_port).await {
+            tracing::error!("Dashboard error: {e}");
+        }
+    });
+
+    network::start_listener(cfg, metrics).await;
 }

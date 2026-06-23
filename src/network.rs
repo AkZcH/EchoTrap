@@ -1,6 +1,7 @@
 // src/network.rs
 use crate::config::CliConfig;
 use crate::detector::AttackTracker;
+use crate::metrics::Metrics;
 use crate::migration;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -14,7 +15,9 @@ const BANNER: &str = "Welcome to EchoTrap Service v1.2\r\n";
 const MIGRATION_COOLDOWN_SECS: u64 = 5;
 const DECOY_DURATION_SECS: u64 = 30;
 
-pub async fn start_listener(cfg: CliConfig) {
+pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
+    metrics.set_port(cfg.port);
+
     let tracker = Arc::new(Mutex::new(AttackTracker::new(
         cfg.threshold as usize,
         cfg.window,
@@ -38,6 +41,7 @@ pub async fn start_listener(cfg: CliConfig) {
             cfg.port,
             cfg.clone(),
             tracker.clone(),
+            metrics.clone(),
             new_tx.subscribe(),
             migrate_req_tx.clone(),
         );
@@ -46,6 +50,7 @@ pub async fn start_listener(cfg: CliConfig) {
     let shutdown_tx_clone = shutdown_tx.clone();
     let cfg_clone = cfg.clone();
     let tracker_clone = tracker.clone();
+    let metrics_clone = metrics.clone();
     let last_migration_clone = last_migration.clone();
     let current_port_clone = current_port.clone();
 
@@ -74,11 +79,11 @@ pub async fn start_listener(cfg: CliConfig) {
                 new_port,
                 cfg_clone.clone(),
                 tracker_clone.clone(),
+                metrics_clone.clone(),
                 new_tx.subscribe(),
                 migrate_req_tx.clone(),
             );
 
-            // Give the new listener's bind() time to complete before tearing down old.
             tokio::time::sleep(Duration::from_millis(50)).await;
 
             {
@@ -88,8 +93,9 @@ pub async fn start_listener(cfg: CliConfig) {
             }
 
             *current_port_clone.lock().await = new_port;
+            metrics_clone.set_port(new_port);
+            metrics_clone.inc_migrations();
 
-            // Decoy on old port — wait for old listener socket to close first.
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(200)).await;
                 migration::spawn_decoy(
@@ -111,6 +117,7 @@ fn spawn_listener_with_migrate(
     port: u16,
     cfg: CliConfig,
     tracker: Arc<Mutex<AttackTracker>>,
+    metrics: Arc<Metrics>,
     mut shutdown_rx: broadcast::Receiver<()>,
     migrate_req_tx: tokio::sync::mpsc::Sender<()>,
 ) -> tokio::task::JoinHandle<()> {
@@ -135,6 +142,7 @@ fn spawn_listener_with_migrate(
                     match accept_res {
                         Ok((socket, peer)) => {
                             info!("Accepted connection from {peer}");
+                            metrics.inc_connections();
 
                             let mut should_migrate = false;
                             {
@@ -144,6 +152,7 @@ fn spawn_listener_with_migrate(
                                         "[ALERT] Scan suspected from {peer} — {} hits in {}s window",
                                         cfg.threshold, cfg.window
                                     );
+                                    metrics.inc_attacks();
                                     should_migrate = true;
                                 }
                             }
