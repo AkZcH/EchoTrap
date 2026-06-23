@@ -1,7 +1,7 @@
 // src/util.rs
-use tracing::info;
+// Utilities used in C-17 (CI / integration tests commit).
+#![allow(dead_code)]
 
 pub fn init_utils() {
-    info!("Utility functions initialized");
-    // TODO: Implement utility functions
+    // TODO C-17: env checks, path validation helpers
 }

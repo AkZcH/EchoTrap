@@ -11,14 +11,11 @@ mod util;
 use clap::Parser;
 use config::CliConfig;
 use logger::init_tracing;
-use tracing::info;
 
 #[tokio::main]
 async fn main() {
-    // Initialize logger
     init_tracing();
 
-    // Parse CLI and config
     let cfg = CliConfig::parse().merged();
 
     println!("2025-10-20T10:32:19.114652Z  INFO === EchoTrap Initialization Complete ===");
@@ -27,9 +24,7 @@ async fn main() {
     println!("2025-10-20T10:32:19.114652Z  INFO Window: {}s", cfg.window);
     println!("2025-10-20T10:32:19.114652Z  INFO Log file: {}", cfg.log);
 
-    // Small delay to ensure logs are flushed
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-    // Start the async listener
     network::start_listener(cfg).await;
 }

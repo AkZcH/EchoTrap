@@ -1,3 +1,7 @@
+// src/metrics.rs
+// Wired into network.rs and dashboard.rs in C-13.
+#![allow(dead_code)]
+
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use serde::Serialize;
