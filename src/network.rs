@@ -14,6 +14,8 @@ use tracing::{error, info, warn};
 const BANNER: &str = "Welcome to EchoTrap Service v1.2\r\n";
 const MIGRATION_COOLDOWN_SECS: u64 = 5;
 const DECOY_DURATION_SECS: u64 = 30;
+/// How long to wait for in-flight handlers to finish after Ctrl-C.
+const DRAIN_TIMEOUT_SECS: u64 = 5;
 
 pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
     metrics.set_port(cfg.port);
@@ -32,6 +34,10 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
     ));
     let current_port = Arc::new(Mutex::new(cfg.port));
 
+    // active_connections tracks how many handle_connection tasks are running.
+    // Stored as an Arc<Mutex<usize>> so the drain wait can poll it.
+    let active_connections: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+
     let (migrate_req_tx, mut migrate_req_rx) = tokio::sync::mpsc::channel::<()>(8);
 
     {
@@ -42,6 +48,7 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
             cfg.clone(),
             tracker.clone(),
             metrics.clone(),
+            active_connections.clone(),
             new_tx.subscribe(),
             migrate_req_tx.clone(),
         );
@@ -51,10 +58,13 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
     let cfg_clone = cfg.clone();
     let tracker_clone = tracker.clone();
     let metrics_clone = metrics.clone();
+    let active_connections_clone = active_connections.clone();
     let last_migration_clone = last_migration.clone();
     let current_port_clone = current_port.clone();
 
-    tokio::spawn(async move {
+    // Migration executor runs as a separate task. We hold its handle so we
+    // can abort it cleanly on shutdown.
+    let migration_handle = tokio::spawn(async move {
         while migrate_req_rx.recv().await.is_some() {
             let now = Instant::now();
             let mut lm = last_migration_clone.lock().await;
@@ -80,6 +90,7 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
                 cfg_clone.clone(),
                 tracker_clone.clone(),
                 metrics_clone.clone(),
+                active_connections_clone.clone(),
                 new_tx.subscribe(),
                 migrate_req_tx.clone(),
             );
@@ -110,7 +121,44 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
         }
     });
 
-    futures::future::pending::<()>().await;
+    // Wait for Ctrl-C. Everything above keeps running concurrently.
+    match tokio::signal::ctrl_c().await {
+        Ok(()) => info!("Ctrl-C received — shutting down gracefully"),
+        Err(e) => error!("Failed to listen for Ctrl-C signal: {e}"),
+    }
+
+    // 1. Stop the migration executor — no more migrations during drain.
+    migration_handle.abort();
+
+    // 2. Signal the active listener to stop accepting new connections.
+    {
+        let tx = shutdown_tx.lock().await;
+        let _ = tx.send(());
+    }
+
+    // 3. Wait up to DRAIN_TIMEOUT_SECS for in-flight handlers to finish.
+    //    We poll active_connections every 100ms rather than using a semaphore
+    //    so the existing handle_connection signature stays unchanged.
+    info!("Waiting up to {DRAIN_TIMEOUT_SECS}s for in-flight connections to close...");
+    let drain_deadline = tokio::time::Instant::now()
+        + Duration::from_secs(DRAIN_TIMEOUT_SECS);
+
+    loop {
+        let remaining = drain_deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            let still_open = *active_connections.lock().await;
+            if still_open > 0 {
+                warn!("{still_open} connection(s) still open after drain timeout — forcing exit");
+            }
+            break;
+        }
+        if *active_connections.lock().await == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    info!("EchoTrap shut down cleanly. Goodbye.");
 }
 
 fn spawn_listener_with_migrate(
@@ -118,6 +166,7 @@ fn spawn_listener_with_migrate(
     cfg: CliConfig,
     tracker: Arc<Mutex<AttackTracker>>,
     metrics: Arc<Metrics>,
+    active_connections: Arc<Mutex<usize>>,
     mut shutdown_rx: broadcast::Receiver<()>,
     migrate_req_tx: tokio::sync::mpsc::Sender<()>,
 ) -> tokio::task::JoinHandle<()> {
@@ -161,7 +210,13 @@ fn spawn_listener_with_migrate(
                                 let _ = migrate_req_tx.try_send(());
                             }
 
-                            tokio::spawn(handle_connection(socket, peer));
+                            // Increment before spawn, decrement when handler exits.
+                            *active_connections.lock().await += 1;
+                            let ac = active_connections.clone();
+                            tokio::spawn(async move {
+                                handle_connection(socket, peer).await;
+                                *ac.lock().await -= 1;
+                            });
                         }
                         Err(e) => {
                             warn!("Accept error on {bind_addr}: {e}");
