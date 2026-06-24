@@ -20,7 +20,15 @@ async fn main() {
 
     let cfg = CliConfig::parse().merged();
 
-    // Styled header block — HERALD style
+    // Validate before printing the header — on error, show problems and exit.
+    if let Err(e) = cfg.validate() {
+        display::error("Configuration errors:");
+        for line in e.to_string().lines() {
+            display::error(&format!("  {line}"));
+        }
+        std::process::exit(1);
+    }
+
     display::print_header(env!("CARGO_PKG_VERSION"));
     display::print_field("port",      &cfg.port.to_string());
     display::print_field("threshold", &format!("{} hits", cfg.threshold));
