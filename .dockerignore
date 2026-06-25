@@ -1,0 +1,7 @@
+CKERIGNORE
+target/
+.git/
+*.log
+echotrap.log
+.dockerignore
+ 
