@@ -37,6 +37,7 @@ async fn main() {
     display::print_field("window",    &format!("{}s", cfg.window));
     display::print_field("persona",   &cfg.persona.to_string());
     display::print_field("log",       &cfg.log);
+    display::print_field("max-conn",   &cfg.max_connections.to_string());
     display::print_field("dashboard", &format!("0.0.0.0:{}", cfg.dashboard_port));
     display::separator();
 

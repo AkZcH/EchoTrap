@@ -42,6 +42,10 @@ pub struct CliConfig {
     #[arg(long, value_enum, default_value_t = Persona::Ssh)]
     pub persona: Persona,
 
+    /// Maximum concurrent connections (1–100_000)
+    #[arg(long, default_value_t = 10_000)]
+    pub max_connections: usize,
+
     /// Optional config file (TOML)
     #[arg(long)]
     pub config: Option<String>,
@@ -54,6 +58,7 @@ pub struct FileConfig {
     pub window: Option<u64>,
     pub log: Option<String>,
     pub dashboard_port: Option<u16>,
+    pub max_connections: Option<usize>,
 }
 
 impl CliConfig {
@@ -81,6 +86,9 @@ impl CliConfig {
                                 .dashboard_port
                                 .unwrap_or(self.dashboard_port),
                             persona: self.persona,
+                            max_connections: file_cfg
+                                .max_connections
+                                .unwrap_or(self.max_connections),
                             config: self.config,
                         };
                     }
@@ -120,6 +128,16 @@ impl CliConfig {
             errors.push(format!(
                 "window {}s exceeds maximum of 3600s (1 hour)",
                 self.window
+            ));
+        }
+
+        if self.max_connections == 0 {
+            errors.push("max-connections must be at least 1".into());
+        }
+        if self.max_connections > 100_000 {
+            errors.push(format!(
+                "max-connections {} exceeds maximum of 100,000",
+                self.max_connections
             ));
         }
 

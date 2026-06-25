@@ -1,17 +1,20 @@
 // src/network.rs
 use crate::config::CliConfig;
-
 use crate::metrics::Metrics;
 use crate::migration;
 use crate::personas;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, Mutex};
+use tokio::io::AsyncWriteExt;
+use tokio::sync::{broadcast, Mutex, Semaphore};
 use tracing::{error, info, warn};
 
 const MIGRATION_COOLDOWN_SECS: u64 = 5;
 const DECOY_DURATION_SECS: u64 = 30;
 const DRAIN_TIMEOUT_SECS: u64 = 5;
+/// How long to wait for a semaphore permit before dropping the connection.
+const BACKPRESSURE_WAIT_MS: u64 = 500;
 
 pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
     metrics.set_port(cfg.port);
@@ -20,6 +23,13 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
         cfg.threshold as usize,
         cfg.window,
     )));
+
+    // Semaphore caps concurrent active handlers. Shared across all listener
+    // tasks (initial + post-migration) so the limit is global, not per-port.
+    let max_conn = NonZeroUsize::new(cfg.max_connections)
+        .expect("max_connections validated > 0")
+        .get();
+    let semaphore: Arc<Semaphore> = Arc::new(Semaphore::new(max_conn));
 
     let shutdown_tx = Arc::new(Mutex::new({
         let (tx, _rx) = broadcast::channel::<()>(1);
@@ -42,6 +52,7 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
             tracker.clone(),
             metrics.clone(),
             active_connections.clone(),
+            semaphore.clone(),
             new_tx.subscribe(),
             migrate_req_tx.clone(),
         );
@@ -52,6 +63,7 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
     let tracker_clone = tracker.clone();
     let metrics_clone = metrics.clone();
     let active_connections_clone = active_connections.clone();
+    let semaphore_clone = semaphore.clone();
     let last_migration_clone = last_migration.clone();
     let current_port_clone = current_port.clone();
 
@@ -82,6 +94,7 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
                 tracker_clone.clone(),
                 metrics_clone.clone(),
                 active_connections_clone.clone(),
+                semaphore_clone.clone(),
                 new_tx.subscribe(),
                 migrate_req_tx.clone(),
             );
@@ -98,7 +111,6 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
             metrics_clone.set_port(new_port);
             metrics_clone.inc_migrations();
 
-            // Pass persona banner to decoy so it stays consistent.
             let decoy_banner = cfg_clone.persona.banner_str();
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(200)).await;
@@ -148,12 +160,14 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
     info!("EchoTrap shut down cleanly. Goodbye.");
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_listener_with_migrate(
     port: u16,
     cfg: CliConfig,
     tracker: Arc<Mutex<crate::detector::AttackTracker>>,
     metrics: Arc<Metrics>,
     active_connections: Arc<Mutex<usize>>,
+    semaphore: Arc<Semaphore>,
     mut shutdown_rx: broadcast::Receiver<()>,
     migrate_req_tx: tokio::sync::mpsc::Sender<()>,
 ) -> tokio::task::JoinHandle<()> {
@@ -197,10 +211,36 @@ fn spawn_listener_with_migrate(
                                 let _ = migrate_req_tx.try_send(());
                             }
 
+                            // Try to acquire a semaphore permit within the
+                            // backpressure window. If full, drop with graceful
+                            // FIN — not RST, which is a scanner signal.
+                            let permit = match tokio::time::timeout(
+                                Duration::from_millis(BACKPRESSURE_WAIT_MS),
+                                semaphore.clone().acquire_owned(),
+                            ).await {
+                                Ok(Ok(p)) => p,
+                                Ok(Err(_)) => {
+                                    // Semaphore closed — shutdown in progress.
+                                    break;
+                                }
+                                Err(_) => {
+                                    // Timeout — at capacity, drop gracefully.
+                                    warn!(
+                                        "Connection limit reached ({} max) — dropping {peer} with FIN",
+                                        cfg.max_connections
+                                    );
+                                    let mut s = socket;
+                                    let _ = s.shutdown().await;
+                                    continue;
+                                }
+                            };
+
                             *active_connections.lock().await += 1;
                             let ac = active_connections.clone();
                             let persona = cfg.persona;
                             tokio::spawn(async move {
+                                // Permit is held for the lifetime of the handler.
+                                let _permit = permit;
                                 personas::handle_connection(socket, peer, persona).await;
                                 *ac.lock().await -= 1;
                             });
