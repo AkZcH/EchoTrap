@@ -9,6 +9,7 @@ mod dashboard;
 mod display;
 mod persona;
 mod personas;
+mod sockopt;
 mod util;
 
 use clap::Parser;

@@ -161,7 +161,7 @@ fn spawn_listener_with_migrate(
         let bind_addr = format!("0.0.0.0:{port}");
         info!("Spawning listener on {bind_addr}");
 
-        let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
+        let listener = match crate::sockopt::bind_with_options(&bind_addr, cfg.persona).await {
             Ok(l) => {
                 info!("EchoTrap listening on {bind_addr}");
                 l
