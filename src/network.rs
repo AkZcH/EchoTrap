@@ -1,26 +1,22 @@
 // src/network.rs
 use crate::config::CliConfig;
-use crate::detector::AttackTracker;
+
 use crate::metrics::Metrics;
 use crate::migration;
-use std::net::SocketAddr;
+use crate::personas;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, Mutex};
 use tracing::{error, info, warn};
 
-const BANNER: &str = "Welcome to EchoTrap Service v1.2\r\n";
 const MIGRATION_COOLDOWN_SECS: u64 = 5;
 const DECOY_DURATION_SECS: u64 = 30;
-/// How long to wait for in-flight handlers to finish after Ctrl-C.
 const DRAIN_TIMEOUT_SECS: u64 = 5;
 
 pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
     metrics.set_port(cfg.port);
 
-    let tracker = Arc::new(Mutex::new(AttackTracker::new(
+    let tracker = Arc::new(Mutex::new(crate::detector::AttackTracker::new(
         cfg.threshold as usize,
         cfg.window,
     )));
@@ -33,9 +29,6 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
         Instant::now() - Duration::from_secs(3600),
     ));
     let current_port = Arc::new(Mutex::new(cfg.port));
-
-    // active_connections tracks how many handle_connection tasks are running.
-    // Stored as an Arc<Mutex<usize>> so the drain wait can poll it.
     let active_connections: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
 
     let (migrate_req_tx, mut migrate_req_rx) = tokio::sync::mpsc::channel::<()>(8);
@@ -62,8 +55,6 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
     let last_migration_clone = last_migration.clone();
     let current_port_clone = current_port.clone();
 
-    // Migration executor runs as a separate task. We hold its handle so we
-    // can abort it cleanly on shutdown.
     let migration_handle = tokio::spawn(async move {
         while migrate_req_rx.recv().await.is_some() {
             let now = Instant::now();
@@ -107,11 +98,13 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
             metrics_clone.set_port(new_port);
             metrics_clone.inc_migrations();
 
+            // Pass persona banner to decoy so it stays consistent.
+            let decoy_banner = cfg_clone.persona.banner_str();
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(200)).await;
                 migration::spawn_decoy(
                     old_port,
-                    BANNER,
+                    decoy_banner,
                     Duration::from_secs(DECOY_DURATION_SECS),
                 );
             });
@@ -121,27 +114,21 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
         }
     });
 
-    // Wait for Ctrl-C. Everything above keeps running concurrently.
     match tokio::signal::ctrl_c().await {
         Ok(()) => info!("Ctrl-C received — shutting down gracefully"),
         Err(e) => error!("Failed to listen for Ctrl-C signal: {e}"),
     }
 
-    // 1. Stop the migration executor — no more migrations during drain.
     migration_handle.abort();
 
-    // 2. Signal the active listener to stop accepting new connections.
     {
         let tx = shutdown_tx.lock().await;
         let _ = tx.send(());
     }
 
-    // 3. Wait up to DRAIN_TIMEOUT_SECS for in-flight handlers to finish.
-    //    We poll active_connections every 100ms rather than using a semaphore
-    //    so the existing handle_connection signature stays unchanged.
     info!("Waiting up to {DRAIN_TIMEOUT_SECS}s for in-flight connections to close...");
-    let drain_deadline = tokio::time::Instant::now()
-        + Duration::from_secs(DRAIN_TIMEOUT_SECS);
+    let drain_deadline =
+        tokio::time::Instant::now() + Duration::from_secs(DRAIN_TIMEOUT_SECS);
 
     loop {
         let remaining = drain_deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -164,7 +151,7 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
 fn spawn_listener_with_migrate(
     port: u16,
     cfg: CliConfig,
-    tracker: Arc<Mutex<AttackTracker>>,
+    tracker: Arc<Mutex<crate::detector::AttackTracker>>,
     metrics: Arc<Metrics>,
     active_connections: Arc<Mutex<usize>>,
     mut shutdown_rx: broadcast::Receiver<()>,
@@ -174,7 +161,7 @@ fn spawn_listener_with_migrate(
         let bind_addr = format!("0.0.0.0:{port}");
         info!("Spawning listener on {bind_addr}");
 
-        let listener = match TcpListener::bind(&bind_addr).await {
+        let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
             Ok(l) => {
                 info!("EchoTrap listening on {bind_addr}");
                 l
@@ -190,7 +177,7 @@ fn spawn_listener_with_migrate(
                 accept_res = listener.accept() => {
                     match accept_res {
                         Ok((socket, peer)) => {
-                            info!("Accepted connection from {peer}");
+                            info!("Accepted connection from {peer} [persona: {}]", cfg.persona);
                             metrics.inc_connections();
 
                             let mut should_migrate = false;
@@ -210,11 +197,11 @@ fn spawn_listener_with_migrate(
                                 let _ = migrate_req_tx.try_send(());
                             }
 
-                            // Increment before spawn, decrement when handler exits.
                             *active_connections.lock().await += 1;
                             let ac = active_connections.clone();
+                            let persona = cfg.persona;
                             tokio::spawn(async move {
-                                handle_connection(socket, peer).await;
+                                personas::handle_connection(socket, peer, persona).await;
                                 *ac.lock().await -= 1;
                             });
                         }
@@ -233,46 +220,4 @@ fn spawn_listener_with_migrate(
 
         info!("Listener on :{port} shut down");
     })
-}
-
-async fn handle_connection(mut socket: TcpStream, peer: SocketAddr) {
-    let (reader, mut writer) = socket.split();
-    let mut buf_reader = BufReader::new(reader);
-
-    if let Err(e) = writer.write_all(BANNER.as_bytes()).await {
-        error!("Failed to send banner to {peer}: {e}");
-        return;
-    }
-    if let Err(e) = writer.flush().await {
-        warn!("Failed to flush banner to {peer}: {e}");
-    }
-
-    let mut line = String::new();
-    loop {
-        line.clear();
-        match buf_reader.read_line(&mut line).await {
-            Ok(0) => {
-                info!("Connection closed by {peer}");
-                return;
-            }
-            Ok(_) => {
-                let payload = line.trim_end_matches(&['\r', '\n'][..]).to_string();
-                info!("[CONN] From {peer} ({} bytes): {payload:?}", payload.len());
-
-                if let Err(e) = writer.write_all(format!("{payload}\r\n").as_bytes()).await {
-                    warn!("Failed to write to {peer}: {e}");
-                    return;
-                }
-                if let Err(e) = writer.flush().await {
-                    warn!("Failed to flush to {peer}: {e}");
-                    return;
-                }
-            }
-            Err(e) => {
-                warn!("Read error from {peer}: {e}");
-                let _ = writer.shutdown().await;
-                return;
-            }
-        }
-    }
 }

@@ -7,6 +7,8 @@ mod logger;
 mod metrics;
 mod dashboard;
 mod display;
+mod persona;
+mod personas;
 mod util;
 
 use clap::Parser;
@@ -20,7 +22,6 @@ async fn main() {
 
     let cfg = CliConfig::parse().merged();
 
-    // Validate before printing the header — on error, show problems and exit.
     if let Err(e) = cfg.validate() {
         display::error("Configuration errors:");
         for line in e.to_string().lines() {
@@ -33,6 +34,7 @@ async fn main() {
     display::print_field("port",      &cfg.port.to_string());
     display::print_field("threshold", &format!("{} hits", cfg.threshold));
     display::print_field("window",    &format!("{}s", cfg.window));
+    display::print_field("persona",   &cfg.persona.to_string());
     display::print_field("log",       &cfg.log);
     display::print_field("dashboard", &format!("0.0.0.0:{}", cfg.dashboard_port));
     display::separator();

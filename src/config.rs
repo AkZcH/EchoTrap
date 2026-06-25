@@ -1,9 +1,8 @@
 // src/config.rs
+use crate::persona::Persona;
 use clap::Parser;
 use serde::Deserialize;
 use std::fmt;
-
-// ── Validation error ──────────────────────────────────────────────────────────
 
 #[derive(Debug)]
 pub struct ConfigError(String);
@@ -15,8 +14,6 @@ impl fmt::Display for ConfigError {
 }
 
 impl std::error::Error for ConfigError {}
-
-// ── CLI config ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Parser, Clone)]
 #[command(name = "EchoTrap", about = "A self-rebuilding TCP honeypot")]
@@ -40,6 +37,10 @@ pub struct CliConfig {
     /// Port for the HTTP dashboard/metrics server
     #[arg(long, default_value_t = 8081)]
     pub dashboard_port: u16,
+
+    /// Protocol persona to emulate (ssh, http, redis, raw)
+    #[arg(long, value_enum, default_value_t = Persona::Ssh)]
+    pub persona: Persona,
 
     /// Optional config file (TOML)
     #[arg(long)]
@@ -79,6 +80,7 @@ impl CliConfig {
                             dashboard_port: file_cfg
                                 .dashboard_port
                                 .unwrap_or(self.dashboard_port),
+                            persona: self.persona,
                             config: self.config,
                         };
                     }
