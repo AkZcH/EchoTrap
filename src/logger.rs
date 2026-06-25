@@ -1,9 +1,9 @@
 // src/logger.rs
 use crate::display;
-use tracing::Level;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::fmt::MakeWriter;
 use std::io::Write;
+use tracing::Level;
+use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::EnvFilter;
 
 struct DisplayWriter {
     level: Level,
@@ -11,11 +11,13 @@ struct DisplayWriter {
 
 impl Write for DisplayWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let raw = std::str::from_utf8(buf).unwrap_or("").trim_end_matches('\n');
+        let raw = std::str::from_utf8(buf)
+            .unwrap_or("")
+            .trim_end_matches('\n');
         match self.level {
-            Level::WARN  => display::warn(raw),
+            Level::WARN => display::warn(raw),
             Level::ERROR => display::error(raw),
-            Level::INFO  => {
+            Level::INFO => {
                 if raw.starts_with("EchoTrap listening")
                     || raw.starts_with("Migration complete")
                     || raw.starts_with("Dashboard listening")
@@ -47,15 +49,16 @@ impl<'a> MakeWriter<'a> for DisplayMakeWriter {
     }
 
     fn make_writer_for(&'a self, meta: &tracing::Metadata<'_>) -> Self::Writer {
-        DisplayWriter { level: *meta.level() }
+        DisplayWriter {
+            level: *meta.level(),
+        }
     }
 }
 
 pub fn init_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .with_writer(DisplayMakeWriter)
         .with_target(false)

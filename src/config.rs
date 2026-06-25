@@ -82,9 +82,7 @@ impl CliConfig {
                             threshold: file_cfg.threshold.unwrap_or(self.threshold),
                             window: file_cfg.window.unwrap_or(self.window),
                             log: file_cfg.log.unwrap_or(self.log),
-                            dashboard_port: file_cfg
-                                .dashboard_port
-                                .unwrap_or(self.dashboard_port),
+                            dashboard_port: file_cfg.dashboard_port.unwrap_or(self.dashboard_port),
                             persona: self.persona,
                             max_connections: file_cfg
                                 .max_connections

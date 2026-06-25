@@ -24,11 +24,7 @@ pub fn print_header(version: &str) {
 
 /// Print a single init field: "  label   value"
 pub fn print_field(label: &str, value: &str) {
-    println!(
-        "  {:<12} {}",
-        label.dimmed(),
-        value.white().bold()
-    );
+    println!("  {:<12} {}", label.dimmed(), value.white().bold());
 }
 
 // ── Event lines ───────────────────────────────────────────────────────────────

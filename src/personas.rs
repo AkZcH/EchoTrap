@@ -15,10 +15,10 @@ pub async fn handle_connection(socket: TcpStream, peer: SocketAddr, persona: Per
     }
 
     match persona {
-        Persona::Ssh   => handle_ssh(socket, peer).await,
-        Persona::Http  => handle_http(socket, peer).await,
+        Persona::Ssh => handle_ssh(socket, peer).await,
+        Persona::Http => handle_http(socket, peer).await,
         Persona::Redis => handle_redis(socket, peer).await,
-        Persona::Raw   => handle_raw(socket, peer).await,
+        Persona::Raw => handle_raw(socket, peer).await,
     }
 }
 
@@ -30,10 +30,7 @@ async fn handle_ssh(mut socket: TcpStream, peer: SocketAddr) {
     let _ = socket.flush().await;
 
     let mut buf = vec![0u8; 256];
-    match tokio::time::timeout(
-        tokio::time::Duration::from_secs(10),
-        socket.read(&mut buf),
-    ).await {
+    match tokio::time::timeout(tokio::time::Duration::from_secs(10), socket.read(&mut buf)).await {
         Ok(Ok(n)) if n > 0 => {
             let client_ver = String::from_utf8_lossy(&buf[..n]);
             info!("[SSH] {peer} sent version: {:?}", client_ver.trim());
@@ -41,7 +38,7 @@ async fn handle_ssh(mut socket: TcpStream, peer: SocketAddr) {
         }
         Ok(Ok(_)) => info!("[SSH] {peer} closed without sending version"),
         Ok(Err(e)) => warn!("[SSH] Read error from {peer}: {e}"),
-        Err(_)     => info!("[SSH] {peer} timed out on version exchange"),
+        Err(_) => info!("[SSH] {peer} timed out on version exchange"),
     }
 
     let _ = socket.shutdown().await;
@@ -63,11 +60,24 @@ async fn handle_http(mut socket: TcpStream, peer: SocketAddr) {
     match tokio::time::timeout(
         tokio::time::Duration::from_secs(10),
         buf_reader.read_line(&mut request_line),
-    ).await {
-        Ok(Ok(0)) => { info!("[HTTP] {peer} closed without request"); return; }
-        Ok(Ok(_)) => { info!("[HTTP] {peer} request: {:?}", request_line.trim()); }
-        Ok(Err(e)) => { warn!("[HTTP] Read error from {peer}: {e}"); return; }
-        Err(_)     => { info!("[HTTP] {peer} timed out"); return; }
+    )
+    .await
+    {
+        Ok(Ok(0)) => {
+            info!("[HTTP] {peer} closed without request");
+            return;
+        }
+        Ok(Ok(_)) => {
+            info!("[HTTP] {peer} request: {:?}", request_line.trim());
+        }
+        Ok(Err(e)) => {
+            warn!("[HTTP] Read error from {peer}: {e}");
+            return;
+        }
+        Err(_) => {
+            info!("[HTTP] {peer} timed out");
+            return;
+        }
     }
 
     let _ = writer.write_all(HTTP_RESPONSE).await;
@@ -86,8 +96,13 @@ async fn handle_redis(mut socket: TcpStream, peer: SocketAddr) {
         match tokio::time::timeout(
             tokio::time::Duration::from_secs(30),
             buf_reader.read_line(&mut line),
-        ).await {
-            Ok(Ok(0)) => { info!("[Redis] {peer} disconnected"); return; }
+        )
+        .await
+        {
+            Ok(Ok(0)) => {
+                info!("[Redis] {peer} disconnected");
+                return;
+            }
             Ok(Ok(_)) => {
                 let cmd = line.trim().to_uppercase();
                 info!("[Redis] {peer} sent: {cmd:?}");
@@ -107,8 +122,15 @@ async fn handle_redis(mut socket: TcpStream, peer: SocketAddr) {
                 }
                 let _ = writer.flush().await;
             }
-            Ok(Err(e)) => { warn!("[Redis] Read error from {peer}: {e}"); return; }
-            Err(_)     => { info!("[Redis] {peer} idle timeout"); let _ = writer.shutdown().await; return; }
+            Ok(Err(e)) => {
+                warn!("[Redis] Read error from {peer}: {e}");
+                return;
+            }
+            Err(_) => {
+                info!("[Redis] {peer} idle timeout");
+                let _ = writer.shutdown().await;
+                return;
+            }
         }
     }
 }
@@ -127,7 +149,10 @@ async fn handle_raw(mut socket: TcpStream, peer: SocketAddr) {
     loop {
         line.clear();
         match buf_reader.read_line(&mut line).await {
-            Ok(0) => { info!("[Raw] Connection closed by {peer}"); return; }
+            Ok(0) => {
+                info!("[Raw] Connection closed by {peer}");
+                return;
+            }
             Ok(_) => {
                 let payload = line.trim_end_matches(&['\r', '\n'][..]).to_string();
                 info!("[Raw] From {peer} ({} bytes): {payload:?}", payload.len());
@@ -137,7 +162,11 @@ async fn handle_raw(mut socket: TcpStream, peer: SocketAddr) {
                 }
                 let _ = writer.flush().await;
             }
-            Err(e) => { warn!("[Raw] Read error from {peer}: {e}"); let _ = writer.shutdown().await; return; }
+            Err(e) => {
+                warn!("[Raw] Read error from {peer}: {e}");
+                let _ = writer.shutdown().await;
+                return;
+            }
         }
     }
 }

@@ -24,17 +24,27 @@ struct MetricsResponse {
 async fn handle_status(State(metrics): State<Arc<Metrics>>) -> Json<StatusResponse> {
     Json(StatusResponse {
         version: env!("CARGO_PKG_VERSION"),
-        current_port: metrics.current_port.load(std::sync::atomic::Ordering::Relaxed) as u16,
+        current_port: metrics
+            .current_port
+            .load(std::sync::atomic::Ordering::Relaxed) as u16,
         uptime_secs: metrics.uptime_secs(),
     })
 }
 
 async fn handle_metrics(State(metrics): State<Arc<Metrics>>) -> Json<MetricsResponse> {
     Json(MetricsResponse {
-        connections_total: metrics.connection_count.load(std::sync::atomic::Ordering::Relaxed),
-        attacks_detected: metrics.attack_count.load(std::sync::atomic::Ordering::Relaxed),
-        port_migrations: metrics.port_migrations.load(std::sync::atomic::Ordering::Relaxed),
-        current_port: metrics.current_port.load(std::sync::atomic::Ordering::Relaxed) as u16,
+        connections_total: metrics
+            .connection_count
+            .load(std::sync::atomic::Ordering::Relaxed),
+        attacks_detected: metrics
+            .attack_count
+            .load(std::sync::atomic::Ordering::Relaxed),
+        port_migrations: metrics
+            .port_migrations
+            .load(std::sync::atomic::Ordering::Relaxed),
+        current_port: metrics
+            .current_port
+            .load(std::sync::atomic::Ordering::Relaxed) as u16,
         uptime_secs: metrics.uptime_secs(),
     })
 }

@@ -90,7 +90,10 @@ pub fn spawn_decoy(old_port: u16, banner: &'static str, duration: Duration) {
     tokio::spawn(async move {
         let listener = match TcpListener::bind(format!("0.0.0.0:{old_port}")).await {
             Ok(l) => {
-                info!("[DECOY] Decoy listener active on :{old_port} for {}s", duration.as_secs());
+                info!(
+                    "[DECOY] Decoy listener active on :{old_port} for {}s",
+                    duration.as_secs()
+                );
                 l
             }
             Err(e) => {

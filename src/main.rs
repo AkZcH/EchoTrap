@@ -1,12 +1,12 @@
 // src/main.rs
 mod config;
-mod network;
+mod dashboard;
 mod detector;
-mod migration;
+mod display;
 mod logger;
 mod metrics;
-mod dashboard;
-mod display;
+mod migration;
+mod network;
 mod persona;
 mod personas;
 mod sockopt;
@@ -32,12 +32,12 @@ async fn main() {
     }
 
     display::print_header(env!("CARGO_PKG_VERSION"));
-    display::print_field("port",      &cfg.port.to_string());
+    display::print_field("port", &cfg.port.to_string());
     display::print_field("threshold", &format!("{} hits", cfg.threshold));
-    display::print_field("window",    &format!("{}s", cfg.window));
-    display::print_field("persona",   &cfg.persona.to_string());
-    display::print_field("log",       &cfg.log);
-    display::print_field("max-conn",   &cfg.max_connections.to_string());
+    display::print_field("window", &format!("{}s", cfg.window));
+    display::print_field("persona", &cfg.persona.to_string());
+    display::print_field("log", &cfg.log);
+    display::print_field("max-conn", &cfg.max_connections.to_string());
     display::print_field("dashboard", &format!("0.0.0.0:{}", cfg.dashboard_port));
     display::separator();
 

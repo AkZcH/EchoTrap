@@ -20,8 +20,7 @@ impl AttackTracker {
     pub fn new(threshold: usize, window_secs: u64) -> Self {
         Self {
             history: LruCache::new(
-                NonZeroUsize::new(MAX_TRACKED_IPS)
-                    .expect("MAX_TRACKED_IPS must be non-zero"),
+                NonZeroUsize::new(MAX_TRACKED_IPS).expect("MAX_TRACKED_IPS must be non-zero"),
             ),
             threshold,
             window: Duration::from_secs(window_secs),
