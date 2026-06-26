@@ -14,13 +14,10 @@ mod util;
 
 use clap::Parser;
 use config::CliConfig;
-use logger::init_tracing;
 use metrics::Metrics;
 
 #[tokio::main]
 async fn main() {
-    init_tracing();
-
     let cfg = CliConfig::parse().merged();
 
     if let Err(e) = cfg.validate() {
@@ -30,6 +27,11 @@ async fn main() {
         }
         std::process::exit(1);
     }
+
+    // Init tracing after validation so we know the log path is writable.
+    // _guard must stay alive for the process lifetime — dropping it flushes
+    // the non-blocking JSON file writer.
+    let _guard = logger::init_tracing(&cfg.log);
 
     display::print_header(env!("CARGO_PKG_VERSION"));
     display::print_field("port", &cfg.port.to_string());

@@ -1,9 +1,14 @@
 // src/logger.rs
 use crate::display;
 use std::io::Write;
+use std::path::Path;
 use tracing::Level;
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
+
+// ── Terminal layer ────────────────────────────────────────────────────────────
 
 struct DisplayWriter {
     level: Level,
@@ -34,69 +39,17 @@ impl Write for DisplayWriter {
     }
 }
 
-/// Route INFO messages to ok() or info() based on content,
-/// and emit structured detail lines for rich events.
 fn route_info(raw: &str) {
-    // ── Success events → green ✓ ──────────────────────────────────────────
-    if raw.starts_with("EchoTrap listening on") {
-        display::ok(raw);
-        return;
-    }
-    if raw.starts_with("Migration complete") {
-        display::ok(raw);
-        return;
-    }
-    if raw.starts_with("Dashboard listening on") {
-        display::ok(raw);
-        return;
-    }
-    if raw.starts_with("[DECOY] Decoy listener active") {
-        display::ok(raw);
-        return;
-    }
-    if raw.starts_with("EchoTrap shut down") {
-        display::ok(raw);
-        return;
-    }
-
-    // ── Migration requested — emit with detail ────────────────────────────
-    if raw.starts_with("Migration requested") {
-        display::info(raw);
-        return;
-    }
-
-    // ── Accepted connection — parse peer and persona ──────────────────────
-    if raw.starts_with("Accepted connection from") {
-        // "Accepted connection from 127.0.0.1:50844 [persona: ssh]"
-        display::info(raw);
-        return;
-    }
-
-    // ── Decoy scanner probe ───────────────────────────────────────────────
-    if raw.starts_with("[DECOY] Scanner") {
-        display::info(raw);
-        return;
-    }
-
-    // ── Shutdown sequence ─────────────────────────────────────────────────
-    if raw.starts_with("Ctrl-C received")
-        || raw.starts_with("Waiting up to")
-        || raw.starts_with("Shutdown signal received")
-        || raw.starts_with("Listener on")
-        || raw.starts_with("[DECOY] Decoy on")
-        || raw.starts_with("Spawning listener")
-        || raw.starts_with("Migration request ignored")
-        || raw.starts_with("Connection closed")
-        || raw.starts_with("[SSH]")
-        || raw.starts_with("[HTTP]")
-        || raw.starts_with("[Redis]")
-        || raw.starts_with("[Raw]")
+    if raw.starts_with("EchoTrap listening on")
+        || raw.starts_with("Migration complete")
+        || raw.starts_with("Dashboard listening on")
+        || raw.starts_with("[DECOY] Decoy listener active")
+        || raw.starts_with("EchoTrap shut down")
     {
+        display::ok(raw);
+    } else {
         display::info(raw);
-        return;
     }
-
-    display::info(raw);
 }
 
 struct DisplayMakeWriter;
@@ -115,15 +68,56 @@ impl<'a> MakeWriter<'a> for DisplayMakeWriter {
     }
 }
 
-pub fn init_tracing() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
+// ── Public init ───────────────────────────────────────────────────────────────
+
+/// Initialise tracing with two layers:
+///   1. Terminal — HERALD-styled display output
+///   2. File — NDJSON for SIEM ingestion (non-blocking background writer)
+///
+/// Returns a `WorkerGuard` that must be kept alive in `main` for the process
+/// lifetime. Dropping it flushes and closes the file writer.
+pub fn init_tracing(log_path: &str) -> WorkerGuard {
+    let path = Path::new(log_path);
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let filename = path
+        .file_name()
+        .unwrap_or(std::ffi::OsStr::new("echotrap.log"))
+        .to_string_lossy()
+        .into_owned();
+
+    let file_appender = tracing_appender::rolling::never(dir, &filename);
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    // Terminal layer — styled HERALD output.
+    let terminal_layer = tracing_subscriber::fmt::layer()
         .with_writer(DisplayMakeWriter)
         .with_target(false)
         .with_level(false)
         .with_line_number(false)
         .without_time()
+        // Box to erase the concrete type so both layers can coexist.
+        .boxed();
+
+    // JSON file layer — NDJSON, one object per line.
+    // {"timestamp":"...","level":"INFO","fields":{"message":"..."}}
+    let json_layer = tracing_subscriber::fmt::layer()
+        .with_writer(non_blocking)
+        .with_target(false)
+        .with_level(true)
+        .with_line_number(false)
+        .json()
+        .flatten_event(true)
+        .with_current_span(false)
+        .with_span_list(false)
+        .boxed();
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(terminal_layer)
+        .with(json_layer)
         .init();
+
+    guard
 }
