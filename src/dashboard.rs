@@ -1,9 +1,17 @@
 // src/dashboard.rs
 use crate::metrics::Metrics;
-use axum::{extract::State, http::StatusCode, response::Json, routing::get, Router};
+use axum::{
+    extract::State,
+    http::{HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Json},
+    routing::get,
+    Router,
+};
 use serde::Serialize;
 use std::sync::Arc;
 use tracing::info;
+
+// ── JSON response types ───────────────────────────────────────────────────────
 
 #[derive(Serialize)]
 struct StatusResponse {
@@ -21,6 +29,12 @@ struct MetricsResponse {
     uptime_secs: u64,
 }
 
+// ── Handlers ──────────────────────────────────────────────────────────────────
+
+async fn handle_health() -> StatusCode {
+    StatusCode::OK
+}
+
 async fn handle_status(State(metrics): State<Arc<Metrics>>) -> Json<StatusResponse> {
     Json(StatusResponse {
         version: env!("CARGO_PKG_VERSION"),
@@ -31,7 +45,7 @@ async fn handle_status(State(metrics): State<Arc<Metrics>>) -> Json<StatusRespon
     })
 }
 
-async fn handle_metrics(State(metrics): State<Arc<Metrics>>) -> Json<MetricsResponse> {
+async fn handle_metrics_json(State(metrics): State<Arc<Metrics>>) -> Json<MetricsResponse> {
     Json(MetricsResponse {
         connections_total: metrics
             .connection_count
@@ -49,9 +63,67 @@ async fn handle_metrics(State(metrics): State<Arc<Metrics>>) -> Json<MetricsResp
     })
 }
 
-async fn handle_health() -> StatusCode {
-    StatusCode::OK
+/// Prometheus text format — compatible with any Prometheus scrape config.
+///
+/// Format spec: https://prometheus.io/docs/instrumenting/exposition_formats/
+/// Each metric:
+///   # HELP <name> <description>
+///   # TYPE <name> <type>
+///   <name>{<labels>} <value>
+async fn handle_metrics_prometheus(State(metrics): State<Arc<Metrics>>) -> impl IntoResponse {
+    let connections = metrics
+        .connection_count
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let attacks = metrics
+        .attack_count
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let migrations = metrics
+        .port_migrations
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let port = metrics
+        .current_port
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let uptime = metrics.uptime_secs();
+    let version = env!("CARGO_PKG_VERSION");
+
+    let body = format!(
+        "# HELP echotrap_connections_total Total TCP connections accepted\n\
+         # TYPE echotrap_connections_total counter\n\
+         echotrap_connections_total {connections}\n\
+         \n\
+         # HELP echotrap_attacks_detected_total Scan/attack events detected\n\
+         # TYPE echotrap_attacks_detected_total counter\n\
+         echotrap_attacks_detected_total {attacks}\n\
+         \n\
+         # HELP echotrap_port_migrations_total Port migrations triggered\n\
+         # TYPE echotrap_port_migrations_total counter\n\
+         echotrap_port_migrations_total {migrations}\n\
+         \n\
+         # HELP echotrap_current_port Currently active honeypot port\n\
+         # TYPE echotrap_current_port gauge\n\
+         echotrap_current_port {port}\n\
+         \n\
+         # HELP echotrap_uptime_seconds Process uptime in seconds\n\
+         # TYPE echotrap_uptime_seconds counter\n\
+         echotrap_uptime_seconds {uptime}\n\
+         \n\
+         # HELP echotrap_info Static build information\n\
+         # TYPE echotrap_info gauge\n\
+         echotrap_info{{version=\"{version}\"}} 1\n\
+         "
+    );
+
+    let mut headers = HeaderMap::new();
+    // Prometheus requires this exact content-type for text format 0.0.4.
+    headers.insert(
+        axum::http::header::CONTENT_TYPE,
+        HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
+    );
+
+    (headers, body)
 }
+
+// ── Router ────────────────────────────────────────────────────────────────────
 
 pub async fn start_dashboard(
     metrics: Arc<Metrics>,
@@ -60,7 +132,10 @@ pub async fn start_dashboard(
     let app = Router::new()
         .route("/health", get(handle_health))
         .route("/status", get(handle_status))
-        .route("/metrics", get(handle_metrics))
+        // JSON endpoint — kept for backward compat and the dashboard widget
+        .route("/metrics", get(handle_metrics_json))
+        // Prometheus text format — scrape this from prometheus.yml
+        .route("/metrics/prometheus", get(handle_metrics_prometheus))
         .with_state(metrics);
 
     let addr = format!("0.0.0.0:{port}");

@@ -1,0 +1,14 @@
+# prometheus.yml
+# Scrape EchoTrap metrics every 15 seconds.
+# Use with: docker-compose --profile monitoring up
+# or: prometheus --config.file=prometheus.yml
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: echotrap
+    static_configs:
+      - targets: ["localhost:8081"]
+    metrics_path: /metrics/prometheus

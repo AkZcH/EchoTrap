@@ -279,3 +279,71 @@ async fn test_dashboard_metrics_endpoint() {
     );
     assert!(body.get("current_port").is_some(), "missing current_port");
 }
+
+#[tokio::test]
+async fn test_prometheus_metrics_format() {
+    use echotrap::spawn_test_dashboard;
+
+    let port = 19006u16;
+    let _handle = spawn_test_dashboard(port).await;
+
+    assert!(
+        wait_for_port(port, Duration::from_secs(2)).await,
+        "dashboard did not come up on :{port}"
+    );
+
+    let client = reqwest::Client::new();
+    let resp = timeout(
+        Duration::from_secs(2),
+        client
+            .get(format!("http://127.0.0.1:{port}/metrics/prometheus"))
+            .send(),
+    )
+    .await
+    .expect("timeout")
+    .expect("request failed");
+
+    assert_eq!(resp.status(), 200);
+
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .expect("missing content-type")
+        .to_str()
+        .expect("non-ascii content-type");
+    assert!(
+        content_type.contains("text/plain"),
+        "Prometheus endpoint must return text/plain, got: {content_type}"
+    );
+    assert!(
+        content_type.contains("0.0.4"),
+        "Prometheus endpoint must declare version=0.0.4, got: {content_type}"
+    );
+
+    let body = resp.text().await.expect("body read failed");
+    assert!(
+        body.contains("# HELP echotrap_connections_total"),
+        "missing HELP for connections_total"
+    );
+    assert!(
+        body.contains("# TYPE echotrap_connections_total counter"),
+        "missing TYPE for connections_total"
+    );
+    assert!(
+        body.contains("echotrap_connections_total "),
+        "missing metric line for connections_total"
+    );
+    assert!(
+        body.contains("echotrap_attacks_detected_total "),
+        "missing attacks_detected_total"
+    );
+    assert!(
+        body.contains("echotrap_port_migrations_total "),
+        "missing port_migrations_total"
+    );
+    assert!(
+        body.contains("echotrap_current_port "),
+        "missing current_port gauge"
+    );
+    assert!(body.contains("echotrap_info{"), "missing build info metric");
+}
