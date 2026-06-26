@@ -35,7 +35,7 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
         let (tx, _rx) = broadcast::channel::<()>(1);
         tx
     }));
-    let last_migration = Arc::new(Mutex::new(Instant::now() - Duration::from_secs(3600)));
+    let last_migration: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
     let current_port = Arc::new(Mutex::new(cfg.port));
     let active_connections: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
 
@@ -69,9 +69,11 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
         while migrate_req_rx.recv().await.is_some() {
             let now = Instant::now();
             let mut lm = last_migration_clone.lock().await;
-            if now.duration_since(*lm) < Duration::from_secs(MIGRATION_COOLDOWN_SECS) {
-                info!("Migration request ignored — cooldown active");
-                continue;
+            if let Some(last) = *lm {
+                if now.duration_since(last) < Duration::from_secs(MIGRATION_COOLDOWN_SECS) {
+                    info!("Migration request ignored — cooldown active");
+                    continue;
+                }
             }
 
             let old_port = *current_port_clone.lock().await;
@@ -119,7 +121,7 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
                 );
             });
 
-            *lm = Instant::now();
+            *lm = Some(Instant::now());
             info!("Migration complete — listening on :{new_port}");
         }
     });
@@ -137,7 +139,8 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
     }
 
     info!("Waiting up to {DRAIN_TIMEOUT_SECS}s for in-flight connections to close...");
-    let drain_deadline = tokio::time::Instant::now() + Duration::from_secs(DRAIN_TIMEOUT_SECS);
+    let drain_deadline =
+        tokio::time::Instant::now() + Duration::from_secs(DRAIN_TIMEOUT_SECS);
 
     loop {
         let remaining = drain_deadline.saturating_duration_since(tokio::time::Instant::now());
