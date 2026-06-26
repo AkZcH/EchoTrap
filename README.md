@@ -28,6 +28,7 @@ Most honeypots are identified in under a second. Masscan looks at banner timing,
 ```bash
 git clone https://github.com/AkZcH/EchoTrap.git
 cd EchoTrap
+cargo clippy -- -D warnings
 cargo run --release -- --port 9000 --threshold 3 --window 10
 ```
 

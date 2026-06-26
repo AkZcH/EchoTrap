@@ -19,7 +19,10 @@ async fn wait_for_port(port: u16, max_wait: Duration) -> bool {
         if tokio::time::Instant::now() >= deadline {
             return false;
         }
-        if TcpStream::connect(format!("127.0.0.1:{port}")).await.is_ok() {
+        if TcpStream::connect(format!("127.0.0.1:{port}"))
+            .await
+            .is_ok()
+        {
             return true;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -94,7 +97,10 @@ fn test_config_rejects_zero_threshold() {
 fn test_config_rejects_ephemeral_port() {
     let mut errors = Vec::new();
     echotrap::config_validate_port_range(40000, "port", &mut errors);
-    assert!(!errors.is_empty(), "40000 should be rejected (ephemeral range)");
+    assert!(
+        !errors.is_empty(),
+        "40000 should be rejected (ephemeral range)"
+    );
     assert!(errors[0].contains("ephemeral"));
 }
 
@@ -202,7 +208,11 @@ async fn test_redis_persona_responds_to_ping() {
         .expect("read failed");
 
     let response = String::from_utf8_lossy(&buf[..n]);
-    assert_eq!(response.trim(), "+PONG", "Redis PING should return +PONG, got: {response:?}");
+    assert_eq!(
+        response.trim(),
+        "+PONG",
+        "Redis PING should return +PONG, got: {response:?}"
+    );
 }
 
 #[tokio::test]
@@ -220,9 +230,7 @@ async fn test_dashboard_health_endpoint() {
     let client = reqwest::Client::new();
     let resp = timeout(
         Duration::from_secs(2),
-        client
-            .get(format!("http://127.0.0.1:{port}/health"))
-            .send(),
+        client.get(format!("http://127.0.0.1:{port}/health")).send(),
     )
     .await
     .expect("timeout")
@@ -257,8 +265,17 @@ async fn test_dashboard_metrics_endpoint() {
     assert_eq!(resp.status(), 200);
 
     let body: serde_json::Value = resp.json().await.expect("response not JSON");
-    assert!(body.get("connections_total").is_some(), "missing connections_total");
-    assert!(body.get("attacks_detected").is_some(), "missing attacks_detected");
-    assert!(body.get("port_migrations").is_some(), "missing port_migrations");
+    assert!(
+        body.get("connections_total").is_some(),
+        "missing connections_total"
+    );
+    assert!(
+        body.get("attacks_detected").is_some(),
+        "missing attacks_detected"
+    );
+    assert!(
+        body.get("port_migrations").is_some(),
+        "missing port_migrations"
+    );
     assert!(body.get("current_port").is_some(), "missing current_port");
 }

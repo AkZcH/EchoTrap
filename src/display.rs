@@ -105,7 +105,11 @@ fn colorize_inner(msg: &str, yellow_base: bool) -> String {
             format!("{}{}", trimmed.cyan().bold(), trailing_space)
         } else if let Some((k, v)) = trimmed.split_once('=') {
             // key=value pair — dim key, cyan value
-            if !k.is_empty() && !v.is_empty() && k.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+            if !k.is_empty()
+                && !v.is_empty()
+                && k.chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+            {
                 format!("{}={}{}", k.dimmed(), v.cyan().bold(), trailing_space)
             } else if yellow_base {
                 format!("{}{}", trimmed.yellow(), trailing_space)

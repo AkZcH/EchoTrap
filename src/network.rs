@@ -139,8 +139,7 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
     }
 
     info!("Waiting up to {DRAIN_TIMEOUT_SECS}s for in-flight connections to close...");
-    let drain_deadline =
-        tokio::time::Instant::now() + Duration::from_secs(DRAIN_TIMEOUT_SECS);
+    let drain_deadline = tokio::time::Instant::now() + Duration::from_secs(DRAIN_TIMEOUT_SECS);
 
     loop {
         let remaining = drain_deadline.saturating_duration_since(tokio::time::Instant::now());
