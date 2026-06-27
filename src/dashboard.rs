@@ -1,4 +1,5 @@
 // src/dashboard.rs
+use crate::error::DashboardError;
 use crate::metrics::Metrics;
 use axum::{
     extract::State,
@@ -10,8 +11,6 @@ use axum::{
 use serde::Serialize;
 use std::sync::Arc;
 use tracing::info;
-
-// ── JSON response types ───────────────────────────────────────────────────────
 
 #[derive(Serialize)]
 struct StatusResponse {
@@ -28,8 +27,6 @@ struct MetricsResponse {
     current_port: u16,
     uptime_secs: u64,
 }
-
-// ── Handlers ──────────────────────────────────────────────────────────────────
 
 async fn handle_health() -> StatusCode {
     StatusCode::OK
@@ -63,13 +60,6 @@ async fn handle_metrics_json(State(metrics): State<Arc<Metrics>>) -> Json<Metric
     })
 }
 
-/// Prometheus text format — compatible with any Prometheus scrape config.
-///
-/// Format spec: https://prometheus.io/docs/instrumenting/exposition_formats/
-/// Each metric:
-///   # HELP <name> <description>
-///   # TYPE <name> <type>
-///   <name>{<labels>} <value>
 async fn handle_metrics_prometheus(State(metrics): State<Arc<Metrics>>) -> impl IntoResponse {
     let connections = metrics
         .connection_count
@@ -114,7 +104,6 @@ async fn handle_metrics_prometheus(State(metrics): State<Arc<Metrics>>) -> impl 
     );
 
     let mut headers = HeaderMap::new();
-    // Prometheus requires this exact content-type for text format 0.0.4.
     headers.insert(
         axum::http::header::CONTENT_TYPE,
         HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
@@ -123,24 +112,29 @@ async fn handle_metrics_prometheus(State(metrics): State<Arc<Metrics>>) -> impl 
     (headers, body)
 }
 
-// ── Router ────────────────────────────────────────────────────────────────────
-
-pub async fn start_dashboard(
-    metrics: Arc<Metrics>,
-    port: u16,
-) -> Result<(), Box<dyn std::error::Error>> {
+/// Start the dashboard HTTP server.
+/// Returns a structured `DashboardError` instead of `Box<dyn Error>`.
+pub async fn start_dashboard(metrics: Arc<Metrics>, port: u16) -> Result<(), DashboardError> {
     let app = Router::new()
         .route("/health", get(handle_health))
         .route("/status", get(handle_status))
-        // JSON endpoint — kept for backward compat and the dashboard widget
         .route("/metrics", get(handle_metrics_json))
-        // Prometheus text format — scrape this from prometheus.yml
         .route("/metrics/prometheus", get(handle_metrics_prometheus))
         .with_state(metrics);
 
     let addr = format!("0.0.0.0:{port}");
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let listener =
+        tokio::net::TcpListener::bind(&addr)
+            .await
+            .map_err(|e| DashboardError::Bind {
+                addr: addr.clone(),
+                source: e,
+            })?;
+
     info!("Dashboard listening on http://{addr}");
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .await
+        .map_err(DashboardError::Serve)?;
+
     Ok(())
 }

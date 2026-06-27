@@ -7,6 +7,7 @@ pub mod config;
 pub mod dashboard;
 pub mod detector;
 pub mod display;
+pub mod error;
 pub mod logger;
 pub mod metrics;
 pub mod migration;
@@ -40,8 +41,6 @@ impl From<TestPersona> for Persona {
 }
 
 /// Spawn a single persona listener on the given port for test use.
-/// Returns a JoinHandle — drop it to stop caring about the task,
-/// or abort() it explicitly to shut the listener down.
 pub async fn spawn_test_listener(port: u16, persona: TestPersona) -> JoinHandle<()> {
     let p: Persona = persona.into();
     tokio::spawn(async move {

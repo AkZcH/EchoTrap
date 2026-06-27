@@ -3,6 +3,7 @@ mod config;
 mod dashboard;
 mod detector;
 mod display;
+mod error;
 mod logger;
 mod metrics;
 mod migration;
