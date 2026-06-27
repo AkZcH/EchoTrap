@@ -21,6 +21,7 @@ socket2 = { version = "0.5", features = ["all"] }
 
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+criterion = { version = "0.5", features = ["async_tokio"] }
 
 [dependencies.time]
 version = "=0.3.36"
@@ -30,3 +31,7 @@ version = "=0.1.2"
 
 [dependencies.time-macros]
 version = "=0.2.18"
+
+[[bench]]
+name = "throughput"
+harness = false
