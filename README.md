@@ -52,6 +52,7 @@ cargo bench
 ```bash
 git clone https://github.com/AkZcH/EchoTrap.git
 cd EchoTrap
+cargo clippy -- -D warnings
 cargo run --release -- --port 9000 --threshold 3 --window 10
 ```
 
