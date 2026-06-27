@@ -4,9 +4,9 @@
 
 Most honeypots are identified in under a second. Masscan looks at banner timing, TCP window size, and echo behavior — any one of these gives it away. EchoTrap fixes all three.
 
-[![Rust](https://img.shields.io/badge/rust-1.75+-orange)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.82+-orange)](https://www.rust-lang.org)
+[![CI](https://github.com/AkZcH/EchoTrap/actions/workflows/ci.yml/badge.svg)](https://github.com/AkZcH/EchoTrap/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Clippy](https://img.shields.io/badge/clippy-passing-brightgreen)](#)
 
 ---
 
@@ -23,13 +23,43 @@ Most honeypots are identified in under a second. Masscan looks at banner timing,
 
 ---
 
+## Performance
+
+Benchmarked with `criterion` on a Windows development machine (loopback). Linux numbers expected 3–5x higher.
+
+| Benchmark                        | Result          |
+| -------------------------------- | --------------- |
+| Connection throughput (100 conn) | ~1,485 conn/s   |
+| Connection throughput (500 conn) | ~1,190 conn/s   |
+| Connection throughput (1k conn)  | ~1,158 conn/s   |
+| Migration latency (full path)    | ~6.3ms p50      |
+| Detector overhead (single IP)    | ~161ns per call |
+| Detector overhead (1k IPs, LRU)  | ~204ns per call |
+| Detector overhead (at threshold) | ~403ns per call |
+
+Migration latency is the full critical path: safe port selection → bind → accept confirmation.
+Detector overhead is per `record_and_check` call — runs on every accepted connection.
+
+Run benchmarks yourself:
+```bash
+cargo bench
+```
+
+---
+
 ## Quickstart
 
 ```bash
 git clone https://github.com/AkZcH/EchoTrap.git
 cd EchoTrap
-cargo clippy -- -D warnings
 cargo run --release -- --port 9000 --threshold 3 --window 10
+```
+
+**Docker:**
+```bash
+docker run -p 9000:9000 -p 8081:8081 ghcr.io/akzch/echotrap
+# or build locally:
+docker build -t echotrap . && docker run -p 9000:9000 -p 8081:8081 echotrap
 ```
 
 Expected output:
@@ -123,19 +153,9 @@ When an IP exceeds the threshold within the detection window:
 
 ---
 
-## Dashboard
+## Observability
 
-Live metrics at `http://localhost:8081`:
-
-```
-GET /metrics   — connections, attacks, migrations, current port, uptime
-GET /status    — version, current port, uptime
-GET /health    — 200 OK
-```
-
-```bash
-curl http://localhost:8081/metrics
-```
+**JSON metrics** at `http://localhost:8081/metrics`:
 
 ```json
 {
@@ -146,6 +166,39 @@ curl http://localhost:8081/metrics
   "uptime_secs": 412
 }
 ```
+
+**Prometheus** at `http://localhost:8081/metrics/prometheus` — scrape with:
+
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: echotrap
+    static_configs:
+      - targets: ["localhost:8081"]
+    metrics_path: /metrics/prometheus
+```
+
+**Structured JSON logs** written to `--log` path for SIEM ingestion:
+
+```json
+{"timestamp":"2026-06-26T03:16:50.493151Z","level":"WARN","message":"[ALERT] Scan suspected from 127.0.0.1:62760 — 3 hits in 10s window"}
+{"timestamp":"2026-06-26T03:16:50.493745Z","level":"INFO","message":"Migration requested — moving from :9000 to :25069"}
+{"timestamp":"2026-06-26T03:16:50.545801Z","level":"INFO","message":"Migration complete — listening on :25069"}
+```
+
+---
+
+## Testing
+
+```bash
+# Unit + integration tests (10 tests, all network-level)
+cargo test --test integration
+
+# Benchmarks
+cargo bench
+```
+
+Integration tests cover: SSH/HTTP/Redis persona banners, dashboard `/health` and `/metrics`, Prometheus format, port safety invariants, config validation.
 
 ---
 
@@ -182,25 +235,26 @@ persona.rs       Persona enum — banner, jitter, socket option profiles
 personas.rs      Per-protocol connection handlers (SSH, HTTP, Redis, Raw)
 sockopt.rs       socket2 bind with per-persona TCP options
 metrics.rs       AtomicUsize counters shared across tasks
-dashboard.rs     Axum HTTP server — /metrics /status /health
-logger.rs        tracing-subscriber with styled output via display.rs
+dashboard.rs     Axum HTTP server — /metrics /status /metrics/prometheus /health
+logger.rs        Dual-layer tracing: HERALD terminal + NDJSON file output
 display.rs       ANSI terminal output (✓ · ! ⚡)
 ```
 
 **Key design decisions:**
 
 - `LruCache` caps memory at 10k tracked IPs (~720KB worst-case) regardless of scan volume
-- New listener is spawned and confirmed before old one shuts down — zero dropped connections on migration
-- Semaphore-based connection cap drops excess connections with graceful FIN, not RST
+- New listener spawned and confirmed accepting before old one shuts down — zero dropped connections on migration
+- Semaphore-based connection cap drops excess with graceful FIN, not RST
 - `socket2` pre-bind configuration — tokio's `TcpListener::bind` doesn't expose socket options
+- Dual logging: styled terminal output for operators, NDJSON file for SIEM pipelines
 
 ---
 
 ## Caveats
 
-- Tested on Windows (MINGW64) and Linux. macOS should work but is untested.
-- The decoy listener re-binds the old port after 200ms. On high-traffic systems, connections arriving in that window will see a refused connection.
-- This is a research/portfolio tool. Do not run it on production infrastructure or networks you don't own.
+- Benchmarked on Windows loopback. Linux production numbers will be significantly higher.
+- The decoy listener re-binds the old port after 200ms. Connections arriving in that window will see a refused connection.
+- Research/portfolio tool. Do not run on production infrastructure or networks you don't own.
 
 ---
 
