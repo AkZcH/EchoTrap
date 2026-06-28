@@ -35,7 +35,6 @@ pub enum MigrationError {
 }
 
 /// Errors from socket option configuration.
-#[allow(dead_code)]
 #[derive(Debug, Error)]
 pub enum SockoptError {
     #[error("failed to create socket: {0}")]
