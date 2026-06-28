@@ -23,13 +23,15 @@ use tracing::warn;
 /// Build a `TcpListener` with socket options tuned to match the given persona's
 /// expected OS fingerprint.
 pub async fn bind_with_options(addr: &str, persona: Persona) -> Result<TcpListener, SockoptError> {
-    let socket_addr: SocketAddr = addr.parse().map_err(|e: std::net::AddrParseError| SockoptError::Bind {
-        addr: addr.to_string(),
-        source: std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()),
-    })?;
+    let socket_addr: SocketAddr =
+        addr.parse()
+            .map_err(|e: std::net::AddrParseError| SockoptError::Bind {
+                addr: addr.to_string(),
+                source: std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()),
+            })?;
 
-    let socket =
-        Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP)).map_err(SockoptError::Create)?;
+    let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
+        .map_err(SockoptError::Create)?;
 
     socket
         .set_reuse_address(true)

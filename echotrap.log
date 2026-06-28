@@ -1,0 +1,24 @@
+{"timestamp":"2026-06-26T03:16:42.721204Z","level":"INFO","message":"Spawning listener on 0.0.0.0:9000"}
+{"timestamp":"2026-06-26T03:16:42.722488Z","level":"INFO","message":"EchoTrap listening on 0.0.0.0:9000"}
+{"timestamp":"2026-06-26T03:16:42.722621Z","level":"INFO","message":"Dashboard listening on http://0.0.0.0:8081"}
+{"timestamp":"2026-06-26T03:16:50.270439Z","level":"INFO","message":"Accepted connection from 127.0.0.1:62757 [persona: ssh]"}
+{"timestamp":"2026-06-26T03:16:50.382487Z","level":"INFO","message":"Accepted connection from 127.0.0.1:62759 [persona: ssh]"}
+{"timestamp":"2026-06-26T03:16:50.398024Z","level":"WARN","message":"[SSH] Read error from 127.0.0.1:62757: An established connection was aborted by the software in your host machine. (os error 10053)"}
+{"timestamp":"2026-06-26T03:16:50.411036Z","level":"WARN","message":"[SSH] Read error from 127.0.0.1:62759: An established connection was aborted by the software in your host machine. (os error 10053)"}
+{"timestamp":"2026-06-26T03:16:50.492984Z","level":"INFO","message":"Accepted connection from 127.0.0.1:62760 [persona: ssh]"}
+{"timestamp":"2026-06-26T03:16:50.493151Z","level":"WARN","message":"[ALERT] Scan suspected from 127.0.0.1:62760 — 3 hits in 10s window"}
+{"timestamp":"2026-06-26T03:16:50.493745Z","level":"INFO","message":"Migration requested — moving from :9000 to :25069"}
+{"timestamp":"2026-06-26T03:16:50.493853Z","level":"INFO","message":"Spawning listener on 0.0.0.0:25069"}
+{"timestamp":"2026-06-26T03:16:50.494189Z","level":"INFO","message":"EchoTrap listening on 0.0.0.0:25069"}
+{"timestamp":"2026-06-26T03:16:50.545801Z","level":"INFO","message":"Migration complete — listening on :25069"}
+{"timestamp":"2026-06-26T03:16:50.546097Z","level":"INFO","message":"Shutdown signal received on :9000 — stopping"}
+{"timestamp":"2026-06-26T03:16:50.546342Z","level":"INFO","message":"Listener on :9000 shut down"}
+{"timestamp":"2026-06-26T03:16:50.558455Z","level":"WARN","message":"[SSH] Read error from 127.0.0.1:62760: An established connection was aborted by the software in your host machine. (os error 10053)"}
+{"timestamp":"2026-06-26T03:16:50.761380Z","level":"INFO","message":"[DECOY] Decoy listener active on :9000 for 30s"}
+{"timestamp":"2026-06-26T03:16:51.097755Z","level":"INFO","message":"[DECOY] Scanner 127.0.0.1:62761 probing old port — feeding dead banner"}
+{"timestamp":"2026-06-26T03:16:51.211764Z","level":"INFO","message":"[DECOY] Scanner 127.0.0.1:62762 probing old port — feeding dead banner"}
+{"timestamp":"2026-06-26T03:17:20.763799Z","level":"INFO","message":"[DECOY] Decoy on :9000 expired"}
+{"timestamp":"2026-06-26T03:26:35.030736Z","level":"INFO","message":"Ctrl-C received — shutting down gracefully"}
+{"timestamp":"2026-06-26T03:26:35.031041Z","level":"INFO","message":"Waiting up to 5s for in-flight connections to close..."}
+{"timestamp":"2026-06-26T03:26:35.031116Z","level":"INFO","message":"Shutdown signal received on :25069 — stopping"}
+{"timestamp":"2026-06-26T03:26:35.031227Z","level":"INFO","message":"EchoTrap shut down cleanly. Goodbye."}
