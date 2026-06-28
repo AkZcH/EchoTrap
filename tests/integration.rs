@@ -85,9 +85,6 @@ fn echotrap_pick_safe_port() -> u16 {
 
 #[test]
 fn test_config_rejects_zero_threshold() {
-    // We test validation logic directly by constructing a CliConfig.
-    // This mirrors what happens when cargo run -- --threshold 0 is invoked.
-    use echotrap::config_validate_port_range;
     let mut errors = Vec::new();
     echotrap::config_validate_port_range(9000, "port", &mut errors);
     assert!(errors.is_empty(), "9000 should be valid: {errors:?}");
