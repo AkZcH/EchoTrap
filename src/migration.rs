@@ -1,4 +1,5 @@
 // src/migration.rs
+use crate::error::MigrationError;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
@@ -25,22 +26,26 @@ fn candidate_port() -> u16 {
     }
 }
 
-pub async fn find_free_port(exclude: u16) -> Option<u16> {
+/// Find a bindable port excluding `exclude`.
+/// Returns `Err(MigrationError::NoFreePort)` if all attempts fail,
+/// giving the caller structured context (attempt count, excluded port).
+pub async fn find_free_port(exclude: u16) -> Result<u16, MigrationError> {
     for _ in 0..MAX_PORT_ATTEMPTS {
         let port = candidate_port();
         if port == exclude {
             continue;
         }
-        match TcpListener::bind(format!("0.0.0.0:{port}")).await {
-            Ok(_) => return Some(port),
-            Err(_) => continue,
+        if TcpListener::bind(format!("0.0.0.0:{port}")).await.is_ok() {
+            return Ok(port);
         }
     }
-    None
+    Err(MigrationError::NoFreePort {
+        attempts: MAX_PORT_ATTEMPTS,
+        exclude,
+    })
 }
 
 // ── Migration history ─────────────────────────────────────────────────────────
-// Fields and methods are unused now; wired in C-13 (metrics/dashboard).
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -114,6 +119,8 @@ pub fn spawn_decoy(old_port: u16, banner: &'static str, duration: Duration) {
                 Ok(Ok((mut socket, peer))) => {
                     tokio::spawn(async move {
                         info!("[DECOY] Scanner {peer} probing old port — feeding dead banner");
+                        // Write failures on decoy connections are intentionally
+                        // ignored — the scanner already connected, we just close.
                         let _ = socket.write_all(banner.as_bytes()).await;
                         let _ = socket.flush().await;
                         let _ = socket.shutdown().await;

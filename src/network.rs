@@ -78,9 +78,9 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
 
             let old_port = *current_port_clone.lock().await;
             let new_port = match migration::find_free_port(old_port).await {
-                Some(p) => p,
-                None => {
-                    warn!("Migration aborted — no free port found after 16 attempts");
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("Migration aborted — {e}");
                     continue;
                 }
             };

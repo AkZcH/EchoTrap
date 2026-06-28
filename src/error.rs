@@ -20,18 +20,10 @@ pub enum DashboardError {
 }
 
 /// Errors that can occur during port migration.
-#[allow(dead_code)]
 #[derive(Debug, Error)]
 pub enum MigrationError {
     #[error("no free port found after {attempts} attempts (excluding :{exclude})")]
     NoFreePort { attempts: usize, exclude: u16 },
-
-    #[error("failed to bind new port :{port}: {source}")]
-    BindFailed {
-        port: u16,
-        #[source]
-        source: std::io::Error,
-    },
 }
 
 /// Errors from socket option configuration.
