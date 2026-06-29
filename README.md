@@ -12,35 +12,36 @@ Most honeypots are identified in under a second. Masscan looks at banner timing,
 
 ## What it does differently
 
-| Technique            | How EchoTrap applies it                                                               |
-| -------------------- | ------------------------------------------------------------------------------------- |
-| Protocol personas    | Emulates OpenSSH 8.9p1, nginx 1.18, or Redis 7 — not a generic echo server            |
-| Timing jitter        | Randomizes banner latency per protocol (SSH: 20–150ms, HTTP: 5–80ms)                  |
-| TCP socket options   | Sets `SO_KEEPALIVE`, `TCP_NODELAY`, recv buffer to match Ubuntu 22.04 server defaults |
-| Graceful FIN on drop | Never sends RST — RST is a honeypot signal to scanners                                |
-| Port migration       | Moves to a new port on scan detection; keeps old port alive with a decoy for 30s      |
-| Safe port selection  | Avoids Linux ephemeral range (32768–60999) to prevent bind conflicts                  |
-
----
+| Technique            | How EchoTrap applies it                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| Protocol personas    | Emulates OpenSSH 8.9p1, nginx 1.18, or Redis 7 — not a generic echo server                  |
+| Timing jitter        | Randomizes banner latency per protocol (SSH: 20–150ms, HTTP: 5–80ms)                        |
+| TCP socket options   | Sets `SO_KEEPALIVE`, `TCP_NODELAY`, recv buffer to match Ubuntu 22.04 server defaults       |
+| Graceful FIN on drop | Never sends RST — RST is a honeypot signal to scanners                                      |
+| Port migration       | Moves to a new port on scan detection; decoy holds old port for 30s                         |
+| nftables REDIRECT    | On Linux: kernel-level transparent redirect from old port to new — zero dropped connections |
+| Safe port selection  | Avoids Linux ephemeral range (32768–60999) and privileged range (<1024)                     |
+| Connection rate cap  | Semaphore-based limit (default 10k); excess dropped with graceful FIN, not RST              |
+| SIEM-ready logging   | Structured NDJSON written to log file — feeds Elastic, Splunk, Loki directly                |
 
 ## Performance
 
 Benchmarked with `criterion` on a Windows development machine (loopback). Linux numbers expected 3–5x higher.
 
-| Benchmark                        | Windows         | Linux/WSL2(new) |
-| -------------------------------- | --------------- | --------------- |
-| Connection throughput (100 conn) | ~1,485 conn/s   | ~1,397 conn/s   |
-| Connection throughput (500 conn) | ~1,190 conn/s   | ~1,327          |
-| Connection throughput (1k conn)  | ~1,158 conn/s   | ~1,359          |
-| Migration latency (full path)    | ~6.3ms p50      | ~2.5ms          |
-| Detector overhead (single IP)    | ~161ns per call | ~64ns           |
-| Detector overhead (1k IPs, LRU)  | ~204ns per call | ~77ns           |
-| Detector overhead (at threshold) | ~403ns per call | ~146ns          |
+| Benchmark                        | Windows         | Linux/WSL2(new)                     |
+| -------------------------------- | --------------- | ----------------------------------- |
+| Connection throughput (100 conn) | ~1,485 conn/s   | ~13,700 conn/s                      |
+| Connection throughput (500 conn) | ~1,190 conn/s   | ~34,000                             |
+| Connection throughput (1k conn)  | ~1,158 conn/s   | ~36,4000                            |
+| Migration latency (full path)    | ~6.3ms p50      | ~106µs (down from 6.3ms on Windows) |
+| Detector overhead (single IP)    | ~161ns per call | ~59ns                               |
+| Detector overhead (1k IPs, LRU)  | ~204ns per call | ~70ns                               |
+| Detector overhead (at threshold) | ~403ns per call | ~147ns                              |
 
 Migration latency is the full critical path: safe port selection → bind → accept confirmation.
 Detector overhead is per `record_and_check` call — runs on every accepted connection.
 
-![performance screenshot](performance.png)
+![performance screenshot](performance2.png)
 
 Run benchmarks yourself:
 
