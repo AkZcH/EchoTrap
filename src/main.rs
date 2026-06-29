@@ -10,6 +10,7 @@ mod migration;
 mod network;
 mod persona;
 mod personas;
+mod redirect;
 mod sockopt;
 mod util;
 

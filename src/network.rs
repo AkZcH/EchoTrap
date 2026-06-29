@@ -113,12 +113,28 @@ pub async fn start_listener(cfg: CliConfig, metrics: Arc<Metrics>) {
 
             let decoy_banner = cfg_clone.persona.banner_str();
             tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_millis(200)).await;
-                migration::spawn_decoy(
-                    old_port,
-                    decoy_banner,
-                    Duration::from_secs(DECOY_DURATION_SECS),
-                );
+                // On Linux with nft available: add REDIRECT rule for zero-downtime
+                // migration, then hand off to decoy after REDIRECT_DURATION.
+                // On Windows or when nft is unavailable: falls back to decoy-only
+                // with the existing 200ms settle window.
+                #[cfg(target_os = "linux")]
+                {
+                    crate::redirect::spawn_redirect_then_decoy(
+                        old_port,
+                        new_port,
+                        decoy_banner,
+                        Duration::from_secs(DECOY_DURATION_SECS),
+                    );
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    migration::spawn_decoy(
+                        old_port,
+                        decoy_banner,
+                        Duration::from_secs(DECOY_DURATION_SECS),
+                    );
+                }
             });
 
             *lm = Some(Instant::now());

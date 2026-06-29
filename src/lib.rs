@@ -14,6 +14,7 @@ pub mod migration;
 pub mod network;
 pub mod persona;
 pub mod personas;
+pub mod redirect;
 pub mod sockopt;
 pub mod util;
 
