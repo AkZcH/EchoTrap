@@ -27,20 +27,23 @@ Most honeypots are identified in under a second. Masscan looks at banner timing,
 
 Benchmarked with `criterion` on a Windows development machine (loopback). Linux numbers expected 3–5x higher.
 
-| Benchmark                        | Result          |
-| -------------------------------- | --------------- |
-| Connection throughput (100 conn) | ~1,485 conn/s   |
-| Connection throughput (500 conn) | ~1,190 conn/s   |
-| Connection throughput (1k conn)  | ~1,158 conn/s   |
-| Migration latency (full path)    | ~6.3ms p50      |
-| Detector overhead (single IP)    | ~161ns per call |
-| Detector overhead (1k IPs, LRU)  | ~204ns per call |
-| Detector overhead (at threshold) | ~403ns per call |
+| Benchmark                        | Windows         | Linux/WSL2(new) |
+| -------------------------------- | --------------- | --------------- |
+| Connection throughput (100 conn) | ~1,485 conn/s   | ~1,397 conn/s   |
+| Connection throughput (500 conn) | ~1,190 conn/s   | ~1,327          |
+| Connection throughput (1k conn)  | ~1,158 conn/s   | ~1,359          |
+| Migration latency (full path)    | ~6.3ms p50      | ~2.5ms          |
+| Detector overhead (single IP)    | ~161ns per call | ~64ns           |
+| Detector overhead (1k IPs, LRU)  | ~204ns per call | ~77ns           |
+| Detector overhead (at threshold) | ~403ns per call | ~146ns          |
 
 Migration latency is the full critical path: safe port selection → bind → accept confirmation.
 Detector overhead is per `record_and_check` call — runs on every accepted connection.
 
+![performance screenshot](performance.png)
+
 Run benchmarks yourself:
+
 ```bash
 cargo bench
 ```
@@ -57,6 +60,7 @@ cargo run --release -- --port 9000 --threshold 3 --window 10
 ```
 
 **Docker:**
+
 ```bash
 docker run -p 9000:9000 -p 8081:8081 ghcr.io/akzch/echotrap
 # or build locally:
