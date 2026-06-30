@@ -1,8 +1,25 @@
-# EchoTrap
+# EchoTrap: A TCP honeypot that resists Masscan and ZMap fingerprinting.
 
-**A TCP honeypot that resists Masscan and ZMap fingerprinting.**
+<div align="center">
 
-Most honeypots are identified in under a second. Masscan looks at banner timing, TCP window size, and echo behavior — any one of these gives it away. EchoTrap fixes all three.
+<!-- ## RavenMQ - AI-Powered Adaptive Task Scheduler -->
+
+  <img src="./banner.png" alt="RavenMQ Logo"/>
+
+  <p>
+    <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License" />
+    <img src="https://img.shields.io/badge/python-3.12-blue?style=flat-square&logo=python&logoColor=white" alt="Python" />
+    <img src="https://img.shields.io/badge/typescript-5.x-blue?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+    <img src="https://img.shields.io/badge/next.js-15-black?style=flat-square&logo=next.js&logoColor=white" alt="Next.js" />
+    <img src="https://img.shields.io/badge/postgresql-16-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL" />
+    <img src="https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker" />
+    <!-- <img src="https://img.shields.io/badge/kubernetes-orchestrated-326CE5?style=flat-square&logo=kubernetes&logoColor=white" alt="Kubernetes" /> -->
+    <!-- <img src="https://img.shields.io/github/actions/workflow/status/AkZcH/RavenMQ/ci.yml?style=flat-square&label=CI%2FCD" alt="CI/CD" /> -->
+  </p>
+
+> Most honeypots are identified in under a second. Masscan looks at banner timing, TCP window size, and echo behavior — any one of these gives it away. EchoTrap fixes all three.
+
+</div>
 
 [![Rust](https://img.shields.io/badge/rust-1.82+-orange)](https://www.rust-lang.org)
 [![CI](https://github.com/AkZcH/EchoTrap/actions/workflows/ci.yml/badge.svg)](https://github.com/AkZcH/EchoTrap/actions/workflows/ci.yml)
